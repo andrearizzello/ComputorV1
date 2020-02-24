@@ -1,231 +1,182 @@
-from sys import argv
 from re import compile
+from sys import argv
 
-reg_polynom = compile('([-+=]?)\s*([0-9\.]+)?(\s*\*?\s*[xX](?:\s*\^\s*([0-9]+))?)?\s*')
-reg_space = compile('\s+')
+reg_monomial = compile(
+    '(?:^\s*([+-])?|\s*([+-])(?![+-]))\s*(?:(\d+(?:\.\d*)?)\s*\*)?\s*([+-])?(?![+-])(\d+(?:\.\d*)?)?([xX])?(?:\^(\d+))?\s*')
 
 
-#
-# ComputerV1
-#
-# ./computerv1.py <expression>
-#
-# Examples:
-#  5 * X^0 + 4 * X^1 - 9.3 * X^2 = 1 * X^0
-#  4 * X^0 + 4 * X^1 - 9.3 * X^2 = 0
-#  5 * X^0 + 4 * X^1 = 4 * X^0
-#  1 * X^0 + 4 * X^1 = 0
-#  8 * X^0 - 6 * X^1 + 0 * X^2 - 5.6 * X^3 = 3 * X^0
-#  5 * X^0 - 6 * X^1 + 0 * X^2 - 5.6 * X^3 = 0
-#  5 + 4 * X + X^2= X^2
-#
-
-class Polynom:
-    sign = None
-    num = 0
-    x = False
-    power = 0
-
-    def __init__(self, m, sign=None, num=0.0, x=False, power=0):
-        raise
-        self.sign = sign
-        self.num = num
-        self.x = x
-        self.power = power
-        if m is not None:
-            if len(m.group(1)) > 0:
-                self.sign = m.group(1)
-                if self.sign == '=':
-                    raise
-            if m.group(2) is None:
-                self.num = 1.0
+class Monomial:
+    def __init__(self, monomial=None, sign='+', number=1.0, x=False, power=0):
+        if monomial is not None:
+            self.sign = monomial[1] if monomial[1].__len__() > 0 else monomial[0] if monomial[0].__len__() > 0 else '+'
+            if monomial[2].__len__() > 0:
+                self.number = float(monomial[2])
+            elif monomial[4].__len__() > 0:
+                self.number = float(monomial[4])
             else:
-                self.num = float(m.group(2))
-            if m.group(3) is not None:
-                self.x = True
-                if m.group(4) is not None:
-                    self.power = int(m.group(4))
-                else:
-                    self.power = 1
-        if self.num < 0.0:
-            self.sign = "+" if self.sign == "-" else "-"
-            self.num = -self.num
-        if self.x and self.power == 0:
-            self.x = False
-
-    def getNum(self):
-        if self.sign == "-":
-            return -self.num
-        return self.num
-
-    def toString(self):
-        s = ""
-        if self.sign is not None:
-            s += self.sign
-            s += " "
-        if self.x and (self.num == 1 or self.num == -1) and self.power != 0:
-            if self.power == 1:
-                s += "X"
+                self.number = 1.0
+            self.x = True if monomial[5].__len__() > 0 else False
+            if monomial[6].__len__() > 0:
+                self.power = int(monomial[6])
+            elif self.x is True:
+                self.power = 1
             else:
-                s += "X^%d" % self.power
-        elif self.x and self.num != 0 and self.power != 0:
-            if self.power == 1:
-                s += "%sX" % str(self.num)
-            else:
-                s += "%sX^%d" % (str(self.num), self.power)
+                self.power = 0
         else:
-            s += str(self.num)
-        return s
+            self.sign = sign
+            self.number = number
+            if x and power == 0:
+                self.x = False
+            else:
+                self.x = x
+                self.power = power
 
 
-class Computer:
+def splitter(equation):
+    try:
+        [left, right] = equation.split('=')
+        return [left, right]
+    except ValueError:
+        print("Syntax error (Wrong format)")
+        exit(1)
+
+
+def cleaner(monomial_list):
+    for index, monomial in enumerate(monomial_list):
+        if monomial.number == 0.0:
+            monomial_list.pop(index)
+
+
+def toString(left, right):
+    equation = ''
+    for monomial in left:
+        equation += f'{f"{monomial.sign} " if monomial.sign == "-" or equation.__len__() > 0 else ""}' \
+                    f'{monomial.number}' \
+                    f'{"X" if monomial.x else ""}' \
+                    f'{f"^{monomial.power}" if monomial.x and monomial.power != 1 else ""} '
+    if left.__len__() == 0:
+        equation += '0 '
+    equation += '='
+    for monomial in right:
+        equation += f' {f"{monomial.sign} " if equation[-1:] != "=" or monomial.sign == "-" else ""}' \
+                    f'{monomial.number}' \
+                    f'{"X" if monomial.x else ""}' \
+                    f'{f"^{monomial.power}" if monomial.x and monomial.power != 1 else ""}'
+    if right.__len__() == 0:
+        equation += ' 0'
+    return equation
+
+
+def reducer(left, right):
+    cleaner(left)
+    cleaner(right)
+    power_list = {}
+    for monomial in left:
+        if monomial.power not in power_list:
+            power_list[monomial.power] = 0.0
+        power_list[monomial.power] += monomial.number if monomial.sign != '-' else -monomial.number
+    for monomial in right:
+        if monomial.power not in power_list:
+            power_list[monomial.power] = 0
+        power_list[monomial.power] -= monomial.number if monomial.sign != '-' else -monomial.number
+    left = []
+    right = []
+    for power_element in sorted(power_list, reverse=True):  # TODO: Check if this works...
+        if power_list[power_element] != 0.0:
+            left.append(Monomial(sign='-' if power_list[power_element] < 0 else '+',
+                                 number=abs(power_list[power_element]),
+                                 x=True,
+                                 power=power_element))
+    return [left, right]
+
+
+def solver(left):
+    if left.__len__() == 0:
+        print("Every real are solution")
+        exit(0)
+    if hasattr(left[0], 'power'):
+        degree = left[0].power
+    else:
+        degree = 0
+    if degree > 2:
+        print("Polynomial degree is grater than 2, i'm unable to solve")
+        exit(1)
+    print(f"Polynomial degree is: {degree}")
+    if degree == 0:
+        a = left[0].number if left[0].sign == '+' else -left[0].number
+        if a == 0:
+            print("Every real are solution")
+            exit(0)
+        else:
+            print("There are no solution")
+            exit(0)
+    elif degree == 1:
+        if left.__len__() > 1:
+            a = left[0].number if left[0].sign == '+' else -left[0].number
+            b = left[1].number if left[1].sign == '+' else -left[1].number
+        else:
+            a = left[0].number if left[0].sign == '+' else -left[0].number
+            b = 0
+        print(f"A = {a}\n"
+              f"B = {b}\n"
+              f"The solution is:\n"
+              f"-B / A = {-b / a}")
+        exit(0)
+    else:
+        if left.__len__() > 2:
+            a = left[0].number if left[0].sign == '+' else -left[0].number
+            b = left[1].number if left[1].sign == '+' else -left[1].number
+            c = left[2].number if left[2].sign == '+' else -left[2].number
+        elif left.__len__() == 2:
+            a = left[0].number if left[0].sign == '+' else -left[0].number
+            b = left[1].number if left[1].sign == '+' else -left[1].number
+            c = 0
+        else:
+            a = left[0].number if left[0].sign == '+' else -left[0].number
+            b = 0
+            c = 0
+        delta = b ** 2 - (4 * a * c)
+        print(f"A = {a}\n"
+              f"B = {b}\n"
+              f"C = {c}\n"
+              f"𝚫 = {delta}\n")
+        if delta > 0:
+            print(f"𝚫 is positive, here the two solutions:\n"
+                  f"(-B - (𝚫 ** 0.5)) / (2 * a) = {(-b - (delta ** 0.5)) / (2 * a)}\n"
+                  f"(-B + (𝚫 ** 0.5)) / (2 * a) = {(-b + (delta ** 0.5)) / (2 * a)}")
+            exit(0)
+        elif delta == 0:
+            print(f"𝚫 is 0, here the solution:\n"
+                  f"-B / (2 * A) = {-b / (2 * a)}")
+            exit(0)
+        else:
+            print(f"𝚫 is negative, here the two solutions:\n"
+                  f"(-B - (𝚫 ** 0.5)) / (2 * A) = {(-b - (abs(delta) ** 0.5)) / (2 * a)}i\n"
+                  f"(-B + (𝚫 ** 0.5)) / (2 * A) = {(-b + (abs(delta) ** 0.5)) / (2 * a)}i")
+            exit(0)
+
+
+if __name__ == '__main__':
     left = []
     right = []
 
-    def __init__(self):
-        self.left = []
-        self.right = []
-
-    def parse(self, eq):
-        pos = 0
-        left = True
-        while pos < len(eq):
-            if eq[pos:pos + 1] == "=" and left and len(self.left) > 0:
-                left = False
-                pos += 1
-            m = reg_space.match(eq, pos)
-            if m is not None:
-                pos += len(m.group(0))
-                continue
-            m = reg_polynom.match(eq, pos)
-            if m is None or len(m.group(0)) <= 0:
-                print("\033[31mUnexpected syntax: '%s'\033[39m" % (eq[pos:pos + 5]))
-                return False
-            try:
-                p = Polynom(m)
-                if p.sign is None:
-                    if left and len(self.left) > 0:
-                        p.sign = "+"
-                    elif not left and len(self.right) > 0:
-                        p.sign = "+"
-            except:
-                print("\033[31mInvalid syntax: '%s'\033[39m" % (eq[pos:pos + 5]))
-                return False
-            if left:
-                self.left.append(p)
-            else:
-                self.right.append(p)
-            pos += len(m.group(0))
-        if len(self.left) == 0:
-            if len(self.right) == 0:
-                print("\033[31mBad argument\033[39m")
-                return False
-            self.left.append(Polynom)
-        if len(self.right) == 0:
-            self.right.append(Polynom)
-        print("Equation: \033[36m" + self.toString() + "\033[39m")
-        return True
-
-    def reduce(self):
-        tmp = {}
-        for p in self.left:
-            if p.power not in tmp:
-                tmp[p.power] = 0.0
-            tmp[p.power] += p.num if p.sign != "-" else -p.num
-        for p in self.right:
-            if p.power not in tmp:
-                tmp[p.power] = 0.0
-            tmp[p.power] -= p.num if p.sign != "-" else -p.num
-        self.left = []
-        for power in sorted(tmp):
-            if tmp[power] != 0:
-                self.left.append(Polynom(None, "+" if len(self.left) > 0 else None, tmp[power], True, power))
-        self.right = [Polynom(None)]
-        if len(self.left) == 0:
-            self.left.append(Polynom(None))
-        print("Reduced form: \033[36m" + self.toString() + "\033[39m")
-        return True
-
-    def resolve(self):
-        degree = 0
-        for p in self.left:
-            if p.power > degree:
-                degree = p.power
-        print("Polynomial degree: \033[32m%d\033[39m" % degree)
-        if degree == 0:
-            a = self.left[0].getNum()
-            if a == 0:
-                print("\033[32mEvery real are solution\033[39m")
-            else:
-                print("\033[31mNo solution\033[39m")
-            return False
-        elif degree == 1:
-            if len(self.left) > 1:
-                b = self.left[0].getNum()
-                a = self.left[1].getNum()
-            else:
-                b = 0
-                a = self.left[0].getNum()
-            print("\033[90ma = " + str(a) + "\033[39m")
-            print("\033[90mb = " + str(b) + "\033[39m")
-            print("The solution is:")
-            print("\033[90m-b / a = \033[32m" + str(-b / a) + "\033[39m")
-        elif degree == 2:
-            if len(self.left) > 2:
-                c = self.left[0].getNum()
-                b = self.left[1].getNum()
-                a = self.left[2].getNum()
-            elif len(self.left) > 1:
-                c = 0
-                b = self.left[0].getNum()
-                a = self.left[1].getNum()
-            else:
-                c = 0
-                b = 0
-                a = self.left[0].getNum()
-            print("\033[90ma = " + str(a) + "\033[39m")
-            print("\033[90mb = " + str(b) + "\033[39m")
-            print("\033[90mc = " + str(c) + "\033[39m")
-            d = b ** 2 - (4 * a * c)
-            print("\033[90md = " + str(d) + "\033[39m")
-            if d > 0:
-                print("Discriminant is strictly positive, the two solutions are:")
-                print("\033[90m(-b - (d ** 0.5)) / (2 * a) = \033[32m" + str((-b - (d ** 0.5)) / (2 * a)) + "\033[39m")
-                print("\033[90m(-b + (d ** 0.5)) / (2 * a) = \033[32m" + str((-b + (d ** 0.5)) / (2 * a)) + "\033[39m")
-            else:
-                if d == 0:
-                    print("Discriminant is 0, the solution is:")
-                    print("\033[90m-b / (2 * a) = \033[32m" + str(-b / (2 * a)))
-                else:
-                    print("Discriminant is strictly negative, the two solutions are:")
-                    print("\033[90m(-b - (d ** 0.5)) / (2 * a) = \033[32m" + str(
-                        (-b - (abs(d) ** 0.5)) / (2 * a)) + "i\033[39m")
-                    print("\033[90m(-b + (d ** 0.5)) / (2 * a) = \033[32m" + str(
-                        (-b + (abs(d) ** 0.5)) / (2 * a)) + "i\033[39m")
-        else:
-            print("\033[31mThe polynomial degree is stricly greater than 2, I can't solve.\033[39m")
-            return False
-        return True
-
-    def toString(self):
-        s = ""
-        for p in self.left:
-            s += p.toString()
-            s += " "
-        s += "="
-        for p in self.right:
-            s += " "
-            s += p.toString()
-        return s
-
-
-if len(argv) <= 1:
-    print("\033[31mNot enougth argument\033[39m")
-else:
-    c = Computer()
-    if not c.parse(argv[1]):
+    if argv.__len__() < 2:
+        print("Error (no equation found)")
         exit(1)
-    if not c.reduce():
+    equation = argv[1].strip()
+    if equation.__len__() < 1:
+        print("Syntax error (empty string)")
         exit(1)
-    if not c.resolve():
-        exit(1)
+    [left_string, right_string] = splitter(equation)
+    left_string = left_string.strip()
+    right_string = right_string.strip()
+    left_matches = reg_monomial.findall(left_string)
+    right_matches = reg_monomial.findall(right_string)
+    for monomial_element in left_matches:
+        left.append(Monomial(monomial_element))
+    for monomial_element in right_matches:
+        right.append(Monomial(monomial_element))
+    print(f'Equation parsed is: {toString(left, right)}')
+    left, right = reducer(left, right)
+    print(f"Reduced form: {toString(left, right)}")
+    solver(left)
